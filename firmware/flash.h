@@ -1,6 +1,11 @@
 #ifndef _flash_h__
 #define _flash_h__
 
+#define FLASH_ID_MX29F040	0xa4c2
+#define FLASH_ID_MX29LV320	0xa7c2
+#define FLASH_ID_MX29LV640	0xc9c2
+#define FLASH_ID_S29JL032	0x5001
+
 struct flashops {
 	uint16_t (*readSiliconID)(void);
 	char (*detect)(void);
