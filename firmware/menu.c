@@ -29,6 +29,10 @@
 #include "usbcomm.h"
 #include "flash.h"
 
+// If set, programming, read and blank checking will be done using SLOT2 only, even for BANK1 and BANK0 accesses.
+#define OPTF_SLOT2_ONLY	1
+
+static uint32_t g_opt_flags;
 
 static uint8_t is_flash_cartridge; // bool
 static uint32_t s_flash_size; // holds capacity of flash
@@ -269,6 +273,25 @@ static void initCart(const char *line, int length)
 	mapper_init(MAPPER_TYPE_SEGA);
 }
 
+static void cmd_opt_slot2(const char *line, int length)
+{
+	int i, value;
+
+	i = sscanf_P(line, PSTR("slot2only %d"), &value);
+	if (i != 1) {
+		error();
+		return;
+	}
+
+	if (value) {
+		puts_P(PSTR("Operations through slot 2 only"));
+		g_opt_flags |= OPTF_SLOT2_ONLY;
+	} else {
+		puts_P(PSTR("Operations through slot 0,1, and 2"));
+		g_opt_flags &= ~OPTF_SLOT2_ONLY;
+	}
+}
+
 static void cmd_info(const char *line, int length)
 {
 	uint16_t id;
@@ -348,8 +371,9 @@ static void cmd_blankcheck(const char *line, int length)
 
 	for (rom_addr=0; rom_addr < size; rom_addr++) {
 
-		// Read bank0/1 using slot0/1 to support mapperless cartridges.
-		if (rom_addr < 0x8000) {
+		// Read bank0/1 using slot0/1 to support mapperless cartridges,
+		// unless option to always use slot 2 is ON.
+		if (!(g_opt_flags & OPTF_SLOT2_ONLY) && (rom_addr < 0x8000)) {
 			b = cartRead(rom_addr);
 		} else {
 			// Use slot2 as a window in the ROM
@@ -369,6 +393,26 @@ static void cmd_blankcheck(const char *line, int length)
 
 	puts_P(PSTR("Cartridge is blank: YES"));
 }
+
+static void writeaddress(const char *line, int length)
+{
+	uint16_t addr;
+	int i;
+	int value;
+
+	i = sscanf_P(line, PSTR("w %04x %02x"), &addr, &value);
+	if (i != 2) {
+		error();
+		return;
+	}
+
+	newline();
+
+	printf_P(PSTR("Write 0x%02x to 0x%04x : "), value, addr);
+	cartWriteClk(addr, value);
+	newline();
+}
+
 
 static void readaddress(const char *line, int length)
 {
@@ -564,6 +608,10 @@ void uploadXmodem(const char *line, int length)
 //					usbcomm_drain();
 //					skip_ack = 1;
 
+					// TODO : Program bank0/1 through slots 0/1, to support simple mapperless
+					// 32k flash cartridges!
+					// Test OPTF_SLOT2_ONLY flag to disable...
+
 					// Access the flash through slot 2
 					mapper_setSlot(SLOT2, rom_addr >> 14);
 					flash_programBytes(0x8000 | (rom_addr & 0x3FFF), &s_packetbuf[3], 128);
@@ -631,7 +679,7 @@ void downloadXmodem(const char *line, int length)
 	for (i=0; i<n_blocks; i++)
 	{
 
-		if (rom_addr < 0x8000) {
+		if (!(g_opt_flags & OPTF_SLOT2_ONLY) && (rom_addr < 0x8000)) {
 			// Read bank0/1 using slot0/1 to support mapperless cartridges.
 			cartReadBytes(rom_addr, 128, s_packetbuf + 3);
 		} else {
@@ -727,10 +775,12 @@ void menu_handleLine(const uint8_t *line, int length)
 		{ PSTR("setromsize "), cmd_setromsize, PSTR("Set download/blankcheck size") },
 		{ PSTR("bc"), cmd_blankcheck, PSTR("Check if cartridge is blank") },
 		{ PSTR("r "), readaddress, PSTR("addresshex [length]") },
+		{ PSTR("w "), writeaddress, PSTR("addresshex bytehex") },
 		{ PSTR("dx"), downloadXmodem, PSTR("Download the ROM with XModem") },
 		{ PSTR("ux"), uploadXmodem, PSTR("Upload and program FLASH with XModem") },
 		{ PSTR("ce"), chiperase, PSTR("Perform a chip erase operation") },
 		{ PSTR("fw"), flashWrite, PSTR("addresshex hexbyte") },
+		{ PSTR("slot2only"), cmd_opt_slot2, PSTR("Option: Use slot 2 only. 1=ON, 0=OFF") },
 		{ PSTR("d1"), debug1, PSTR("Debug 1") },
 		{ PSTR("d2"), debug2, PSTR("Debug 2") },
 		{ PSTR("m1"), debug_m1, PSTR("M test 1") },
