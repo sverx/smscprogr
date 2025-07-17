@@ -255,12 +255,16 @@ parser.add_argument("-i", '--info', help='Provide information about the programm
 parser.add_argument("-b", '--blankcheck', help='Check if a FLASH cartridge is blank', action='store_true')
 parser.add_argument("-r", '--read', help='Read the cartridge contents to a file.', type=argparse.FileType('wb'), dest='outfile', metavar='outfile.sms')
 parser.add_argument("-p", '--prog', help='(Re)program the cartridge with contents of file', type=argparse.FileType('rb'), dest='infile', metavar='rom.sms')
+parser.add_argument("-e", '--erase', help='Erase flash (chip erase)', action='store_true')
 parser.add_argument("-d", "--device", help='Use specified serial port device.', action='store', default='/dev/ttyACM0')
 parser.add_argument("-l", '--listports', help='List serial ports', action='store_true')
 parser.add_argument("-v", '--verbose', help='Enable verbose output', action='store_true')
 parser.add_argument('--bootloader', help='Restart programmer in bootloader for FW update', action='store_true')
 parser.add_argument('--verify', help='Read back and compare after programming', default=False, action='store_true')
 parser.add_argument('--update_firmware', help='Update programmer firmware with hexfile', action='store', metavar='firmware.hex')
+parser.add_argument('--skip-chip-erase', help='* ADVANCED * Do not perform an automatic chip erase before programming', action='store_true')
+parser.add_argument('--skip-init', help='* ADVANCED * Do not perform cartridge/flash size detection and initialisation', action='store_true')
+parser.add_argument('--rawcommand', help='* ADVANCED * Send a single line command to the programmer')
 
 args = parser.parse_args()
 verbose_mode = args.verbose
@@ -330,13 +334,27 @@ if args.blankcheck:
     print(tmp)
 
 
+# Chip erase
+if args.erase:
+    sendAbort()
+    tmp = exchangeCommand("")
+    tmp = exchangeCommand("")
+    if not args.skip_init:
+        tmp = exchangeCommand("init")
+        print(tmp)
+    tmp = exchangeCommand("ce")
+    print(tmp)
+    print("Chip erase completed in", last_exch_duration, " seconds")
+
+
 # Download / Dump cartridge
 if args.outfile != None:
     sendAbort()
     tmp = exchangeCommand("")
     tmp = exchangeCommand("")
-    tmp = exchangeCommand("init")
-    print(tmp)
+    if not args.skip_init:
+        tmp = exchangeCommand("init")
+        print(tmp)
     download(args.outfile)
     tmp = exchangeCommand("")
 
@@ -348,11 +366,13 @@ if args.infile != None:
     sendAbort()
     tmp = exchangeCommand("")
     tmp = exchangeCommand("")
-    tmp = exchangeCommand("init")
-    print(tmp)
-    tmp = exchangeCommand("ce")
-    print(tmp)
-    print("Chip erase completed in", last_exch_duration, " seconds")
+    if not args.skip_init:
+        tmp = exchangeCommand("init")
+        print(tmp)
+    if not args.skip_chip_erase:
+        tmp = exchangeCommand("ce")
+        print(tmp)
+        print("Chip erase completed in", last_exch_duration, " seconds")
     upload(args.infile)
     tmp = exchangeCommand("")
 
@@ -393,6 +413,14 @@ if args.info:
     tmp = exchangeCommand("")
     tmp = exchangeCommand("")
     tmp = exchangeCommand("init")
+    print(tmp)
+    tmp = exchangeCommand("")
+
+
+if args.rawcommand:
+    tmp = exchangeCommand("")
+    tmp = exchangeCommand("")
+    tmp = exchangeCommand(args.rawcommand)
     print(tmp)
     tmp = exchangeCommand("")
 
