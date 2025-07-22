@@ -7,7 +7,9 @@ Version 1.4
 	  programming (use to save time if you know the chip is blank)
 	- [carttool.py] Add a way to skip mapper detection / size
 	  detection for dumping, programming and blank-checking
-	- [carttool.py] Add --rawcommand option, to send manual commands to the programmer
+	- [carttool.py] Add --rawcommand option, to send manual commands to the programme
+	- [carttool.ph] Add --file_start_offset and --file_read_size, to allow
+	  programming with data embedded within a larger file.
 
 Version 1.3 - 2025-06-11
 	- Add verify and firmware update commands to dumpcart.py/carttool.py
