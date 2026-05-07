@@ -29,10 +29,19 @@ void flash_init(void)
 	id = flash_29lv320_ops.readSiliconID();
 	if (id == 0xa7c2) {
 		ops = &flash_29lv320_ops;
+    return;
 	}
+
 	if (id == 0x5001) {
 		ops = &flash_29lv320_ops;
+    return;
 	}
+
+  id = flash_39sf040_ops.readSiliconID();
+  if ((id == 0xb7bf) || (id == 0xb6bf) || (id == 0xb5bf)) {
+    ops = &flash_39sf040_ops;
+    return;
+  }
 }
 
 uint16_t flash_readSiliconID(void)
@@ -67,8 +76,10 @@ uint32_t flash_getMaxSize(uint16_t flash_id)
 		case 0xa4c2: return 524288; // MX29F040     512K
 		case 0xa7c2: return 4194304; // MX29LV320   4M
 		case 0x5001: return 4194304; // S29JL032    4M
+    case 0xb7bf: return 524288; // SST39SF040   512K
+    case 0xb6bf: return 262144; // SST39SF020A  256K
+    case 0xb5bf: return 131072; // SST39SF010A  128K
 	}
 
 	return 4194304; // assume the max possible with Sega mapper
 }
-

@@ -192,6 +192,9 @@ static void printFlashInfo(uint16_t id)
 		case 0xa4c2: puts_P(PSTR("MX29F040 (supported)")); break;
 		case 0xa7c2: puts_P(PSTR("MX29LV320 (supported)")); break;
 		case 0x5001: puts_P(PSTR("S29JL032 (supported)")); break;
+    case 0xb7bf: puts_P(PSTR("SST39SF040 (supported)")); break;
+    case 0xb6bf: puts_P(PSTR("SST39SF020A (supported)")); break;
+    case 0xb5bf: puts_P(PSTR("SST39SF010A (supported)")); break;
 		default: puts_P(PSTR(" (unknown/unsupported)")); break;
 	}
 }
