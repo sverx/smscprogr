@@ -15,6 +15,8 @@ trxbytes = 0
 trxbytes2 = 0
 last_exch_start_time_start = 0
 last_exch_duration = 0
+file_start_offset = 0
+file_read_size = -1 # read whole file
 
 programmer_caps = [ ];
 # firmware 1.0 did not have the 'version' command
@@ -109,7 +111,7 @@ def upload(infile):
 
     xm = XMODEM(getc,  putc)
     print("Uploading", end="", flush=True)
-    n = xm.send(infile, retry=102, quiet=False )
+    n = xm.send(infile, retry=102, quiet=False, callback=sendPacketCallback )
     print("") # newline
     duration = (datetime.datetime.now() - time_start).total_seconds();
     if n:
@@ -224,10 +226,10 @@ def getc(size, timeout=1):
     dat = ser.read(size)
 
     # Display a . each 1k
-    trxbytes = trxbytes + len(dat)
-    if trxbytes - trxbytes2 > 1024:
-        print(".", end="", flush=True)
-        trxbytes2 = trxbytes
+    #trxbytes = trxbytes + len(dat)
+    #if trxbytes - trxbytes2 > 1024:
+    #    print(".", end="", flush=True)
+    #    trxbytes2 = trxbytes
 
     return dat
 
@@ -238,12 +240,19 @@ def putc(data, timeout=1):
     ser.flush()
 
     # Display a . each 1k
-    trxbytes = trxbytes + len(data)
-    if trxbytes - trxbytes2 > 1024:
-        print(".", end="", flush=True)
-        trxbytes2 = trxbytes
+    #trxbytes = trxbytes + len(data)
+    #if trxbytes - trxbytes2 > 1024:
+    #    print(".", end="", flush=True)
+    #    trxbytes2 = trxbytes
 
     return n
+
+# Glue functions for xmodem
+def sendPacketCallback(total_packets, success_count, error_count):
+    global trxbytes, trxbytes2
+    trxbytes = success_count * 128
+    print(str(trxbytes) + " bytes uploaded (errors: " + str(error_count) + ")" , end='\r')
+
 
 
 logging.basicConfig(filename='example.log', level=logging.DEBUG)
@@ -255,15 +264,23 @@ parser.add_argument("-i", '--info', help='Provide information about the programm
 parser.add_argument("-b", '--blankcheck', help='Check if a FLASH cartridge is blank', action='store_true')
 parser.add_argument("-r", '--read', help='Read the cartridge contents to a file.', type=argparse.FileType('wb'), dest='outfile', metavar='outfile.sms')
 parser.add_argument("-p", '--prog', help='(Re)program the cartridge with contents of file', type=argparse.FileType('rb'), dest='infile', metavar='rom.sms')
+parser.add_argument("-e", '--erase', help='Erase flash (chip erase)', action='store_true')
 parser.add_argument("-d", "--device", help='Use specified serial port device.', action='store', default='/dev/ttyACM0')
 parser.add_argument("-l", '--listports', help='List serial ports', action='store_true')
 parser.add_argument("-v", '--verbose', help='Enable verbose output', action='store_true')
 parser.add_argument('--bootloader', help='Restart programmer in bootloader for FW update', action='store_true')
 parser.add_argument('--verify', help='Read back and compare after programming', default=False, action='store_true')
 parser.add_argument('--update_firmware', help='Update programmer firmware with hexfile', action='store', metavar='firmware.hex')
+parser.add_argument('--skip-chip-erase', help='* ADVANCED * Do not perform an automatic chip erase before programming', action='store_true')
+parser.add_argument('--skip-init', help='* ADVANCED * Do not perform cartridge/flash size detection and initialisation', action='store_true')
+parser.add_argument('--rawcommand', help='* ADVANCED * Send a single line command to the programmer')
+parser.add_argument('--file_start_offset', help='* ADVANCED * When programming, start reading from file at specified offset (skip first N bytes)', type=int, default=0)
+parser.add_argument('--file_read_size', help='* ADVANCED * When programming, stop after reading N bytes from file (default: read all file)', type=int, default=-1)
 
 args = parser.parse_args()
 verbose_mode = args.verbose
+file_start_offset = args.file_start_offset
+file_read_size = args.file_read_size
 
 if (args.listports):
     portlist = serial.tools.list_ports.comports()
@@ -330,13 +347,27 @@ if args.blankcheck:
     print(tmp)
 
 
+# Chip erase
+if args.erase:
+    sendAbort()
+    tmp = exchangeCommand("")
+    tmp = exchangeCommand("")
+    if not args.skip_init:
+        tmp = exchangeCommand("init")
+        print(tmp)
+    tmp = exchangeCommand("ce")
+    print(tmp)
+    print("Chip erase completed in", last_exch_duration, " seconds")
+
+
 # Download / Dump cartridge
 if args.outfile != None:
     sendAbort()
     tmp = exchangeCommand("")
     tmp = exchangeCommand("")
-    tmp = exchangeCommand("init")
-    print(tmp)
+    if not args.skip_init:
+        tmp = exchangeCommand("init")
+        print(tmp)
     download(args.outfile)
     tmp = exchangeCommand("")
 
@@ -348,23 +379,33 @@ if args.infile != None:
     sendAbort()
     tmp = exchangeCommand("")
     tmp = exchangeCommand("")
-    tmp = exchangeCommand("init")
-    print(tmp)
-    tmp = exchangeCommand("ce")
-    print(tmp)
-    print("Chip erase completed in", last_exch_duration, " seconds")
-    upload(args.infile)
+    if not args.skip_init:
+        tmp = exchangeCommand("init")
+        print(tmp)
+    if not args.skip_chip_erase:
+        tmp = exchangeCommand("ce")
+        print(tmp)
+        print("Chip erase completed in", last_exch_duration, " seconds")
+
+    # Read the full file (or subset, if file_start_offset and file_read_size hold non-default values)
+    # into memory, and create a new stream to pass to upload().
+    buffer = io.BytesIO();
+    args.infile.seek(file_start_offset)
+    uploaddata = args.infile.read(file_read_size)
+    uploadsize = len(uploaddata)
+    buffer.write(uploaddata)
+    buffer.seek(0)
+
+    # perform the upload
+    upload(buffer)
     tmp = exchangeCommand("")
 
-
     if args.verify:
-        args.infile.seek(0)
-        filedata = args.infile.read()
-        print("file size: ", len(filedata))
+        print("verify size: ", uploadsize)
 
         if "setromsize" in programmer_caps:
             tmp = exchangeCommand("")
-            tmp = exchangeCommand("setromsize " + str(len(filedata)) )
+            tmp = exchangeCommand("setromsize " + str(uploadsize) )
         else:
             print("Warning: Programmer firmware does not support 'setromsize'. Verify will be slow.")
             tmp = exchangeCommand("init")
@@ -372,12 +413,12 @@ if args.infile != None:
         readbuf = downloadToBuffer()
         print("readback length: ", len(readbuf))
 
-        if filedata == readbuf:
+        if uploaddata == readbuf:
             print("Verify OK")
-        elif len(readbuf) > len(filedata):
+        elif len(readbuf) > uploadsize:
             # without the setromsize command, download may be larger than file due to failing
             # ROM size auto-detection
-            if filedaata == readbuf[0:len(filedata)]:
+            if uploaddata == readbuf[0:uploadsize]:
                 print("Verify OK")
             else:
                 printf("Verify FAILED")
@@ -393,6 +434,14 @@ if args.info:
     tmp = exchangeCommand("")
     tmp = exchangeCommand("")
     tmp = exchangeCommand("init")
+    print(tmp)
+    tmp = exchangeCommand("")
+
+
+if args.rawcommand:
+    tmp = exchangeCommand("")
+    tmp = exchangeCommand("")
+    tmp = exchangeCommand(args.rawcommand)
     print(tmp)
     tmp = exchangeCommand("")
 
