@@ -111,7 +111,7 @@ def upload(infile):
 
     xm = XMODEM(getc,  putc)
     print("Uploading", end="", flush=True)
-    n = xm.send(infile, retry=102, quiet=False )
+    n = xm.send(infile, retry=102, quiet=False, callback=sendPacketCallback )
     print("") # newline
     duration = (datetime.datetime.now() - time_start).total_seconds();
     if n:
@@ -226,10 +226,10 @@ def getc(size, timeout=1):
     dat = ser.read(size)
 
     # Display a . each 1k
-    trxbytes = trxbytes + len(dat)
-    if trxbytes - trxbytes2 > 1024:
-        print(".", end="", flush=True)
-        trxbytes2 = trxbytes
+    #trxbytes = trxbytes + len(dat)
+    #if trxbytes - trxbytes2 > 1024:
+    #    print(".", end="", flush=True)
+    #    trxbytes2 = trxbytes
 
     return dat
 
@@ -240,12 +240,19 @@ def putc(data, timeout=1):
     ser.flush()
 
     # Display a . each 1k
-    trxbytes = trxbytes + len(data)
-    if trxbytes - trxbytes2 > 1024:
-        print(".", end="", flush=True)
-        trxbytes2 = trxbytes
+    #trxbytes = trxbytes + len(data)
+    #if trxbytes - trxbytes2 > 1024:
+    #    print(".", end="", flush=True)
+    #    trxbytes2 = trxbytes
 
     return n
+
+# Glue functions for xmodem
+def sendPacketCallback(total_packets, success_count, error_count):
+    global trxbytes, trxbytes2
+    trxbytes = success_count * 128
+    print(str(trxbytes) + " bytes uploaded (errors: " + str(error_count) + ")" , end='\r')
+
 
 
 logging.basicConfig(filename='example.log', level=logging.DEBUG)
@@ -273,6 +280,7 @@ parser.add_argument('--file_read_size', help='* ADVANCED * When programming, sto
 args = parser.parse_args()
 verbose_mode = args.verbose
 file_start_offset = args.file_start_offset
+file_read_size = args.file_read_size
 
 if (args.listports):
     portlist = serial.tools.list_ports.comports()
